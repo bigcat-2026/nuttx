@@ -226,6 +226,17 @@ config ES8311_WORKER_STACKSIZE
 
 endif # AUDIO_ES8388
 
+config AUDIO_ES7210
+	bool "ES7210 ADC chip"
+	default n
+	depends on AUDIO
+	depends on I2C
+	depends on I2S
+	select AUDIO_I2S
+	---help---
+		Select to enable support for the ES7210 audio ADC by Everest
+		Semiconductor.
+
 config AUDIO_ES8388
 	bool "ES8388 codec chip"
 	default n
