@@ -266,6 +266,7 @@ static void hci_acl(FAR struct bt_buf_s *buf)
     }
 
   bt_conn_receive(conn, buf, flags);
+  bt_conn_release(conn);
 }
 
 /* HCI event processing */
@@ -335,6 +336,16 @@ static void hci_cmd_done(uint16_t opcode, uint8_t status,
             "expected 0x%04x\n",
             opcode, g_btdev.sent_cmd->u.hci.opcode);
       return;
+    }
+
+  if (opcode == BT_HCI_OP_LE_SET_ADV_DATA ||
+      opcode == BT_HCI_OP_LE_SET_SCAN_RSP_DATA ||
+      opcode == BT_HCI_OP_LE_SET_ADV_PARAMETERS ||
+      opcode == BT_HCI_OP_LE_SET_ADV_ENABLE)
+    {
+      printf("BLE HCI adv complete: opcode=0x%04x status=%u\n",
+             opcode, status);
+      fflush(stdout);
     }
 
   g_btdev.sent_cmd = NULL;
@@ -651,8 +662,15 @@ static void hci_disconn_complete(FAR struct bt_buf_s *buf)
   if (!conn)
     {
       wlerr("ERROR:  Unable to look up conn with handle %u\n", handle);
+      printf("BLE HCI disconnect: missing host conn handle=%u reason=%u adv=%u\n",
+             handle, evt->reason, g_btdev.adv_enable);
+      fflush(stdout);
       return;
     }
+
+  printf("BLE HCI disconnect: handle=%u reason=%u adv=%u\n",
+         handle, evt->reason, g_btdev.adv_enable);
+  fflush(stdout);
 
   bt_l2cap_disconnected(conn);
   bt_disconnected(conn);
@@ -728,8 +746,15 @@ static void le_conn_complete(FAR struct bt_buf_s *buf)
   if (!conn)
     {
       wlerr("ERROR:  Unable to add new conn for handle %u\n", handle);
+      printf("BLE HCI connected without host slot: handle=%u peer=%s\n",
+             handle, bt_addr_le_str(&evt->peer_addr));
+      fflush(stdout);
       return;
     }
+
+  printf("BLE HCI connected: handle=%u role=%u peer=%s\n", handle,
+         evt->role, bt_addr_le_str(&evt->peer_addr));
+  fflush(stdout);
 
   conn->handle           = handle;
   conn->src.type         = BT_ADDR_LE_PUBLIC;
@@ -2092,11 +2117,16 @@ int bt_start_advertising(uint8_t type, FAR const struct bt_eir_s *ad,
           break;
         }
 
-      memcpy(&set_data->data[set_data->len], &ad[i], ad[i].len + 1);
+  memcpy(&set_data->data[set_data->len], &ad[i], ad[i].len + 1);
       set_data->len += ad[i].len + 1;
     }
 
-  bt_hci_cmd_send(BT_HCI_OP_LE_SET_ADV_DATA, buf);
+  i = bt_hci_cmd_send(BT_HCI_OP_LE_SET_ADV_DATA, buf);
+  if (i < 0)
+    {
+      printf("BLE adv start: set adv data failed ret=%d\n", i);
+      return i;
+    }
 
 send_scan_rsp:
   if (sd == NULL)
@@ -2129,7 +2159,12 @@ send_scan_rsp:
       scan_rsp->len += sd[i].len + 1;
     }
 
-  bt_hci_cmd_send(BT_HCI_OP_LE_SET_SCAN_RSP_DATA, buf);
+  i = bt_hci_cmd_send(BT_HCI_OP_LE_SET_SCAN_RSP_DATA, buf);
+  if (i < 0)
+    {
+      printf("BLE adv start: set scan rsp failed ret=%d\n", i);
+      return i;
+    }
 
 send_set_param:
   buf = bt_hci_cmd_create(BT_HCI_OP_LE_SET_ADV_PARAMETERS,
@@ -2148,7 +2183,12 @@ send_set_param:
   set_param->type         = type;
   set_param->channel_map  = 0x07;
 
-  bt_hci_cmd_send(BT_HCI_OP_LE_SET_ADV_PARAMETERS, buf);
+  i = bt_hci_cmd_send(BT_HCI_OP_LE_SET_ADV_PARAMETERS, buf);
+  if (i < 0)
+    {
+      printf("BLE adv start: set params failed ret=%d\n", i);
+      return i;
+    }
 
   buf = bt_hci_cmd_create(BT_HCI_OP_LE_SET_ADV_ENABLE, 1);
   if (buf == NULL)
@@ -2160,7 +2200,13 @@ send_set_param:
   g_btdev.adv_enable = 0x01;
   memcpy(bt_buf_extend(buf, 1), &g_btdev.adv_enable, 1);
 
-  return bt_hci_cmd_send_sync(BT_HCI_OP_LE_SET_ADV_ENABLE, buf, NULL);
+  i = bt_hci_cmd_send_sync(BT_HCI_OP_LE_SET_ADV_ENABLE, buf, NULL);
+  if (i < 0)
+    {
+      printf("BLE adv start: enable failed ret=%d\n", i);
+    }
+
+  return i;
 }
 
 /****************************************************************************
@@ -2369,4 +2415,3 @@ void bt_hci_cb_register(FAR struct bt_hci_cb_s *cb)
 }
 
 #endif
-

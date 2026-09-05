@@ -45,6 +45,7 @@
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
+#include <stdio.h>
 #include <debug.h>
 
 #include <nuttx/net/bluetooth.h>
@@ -453,6 +454,9 @@ static void send_err_rsp(FAR struct bt_conn_s *conn, uint8_t req,
       return;
     }
 
+  printf("BLE ATT error: req=0x%02x handle=0x%04x err=0x%02x\n",
+         req, handle, err);
+
   buf = bt_att_create_pdu(conn, BT_ATT_OP_ERROR_RSP, sizeof(*rsp));
   if (!buf)
     {
@@ -481,11 +485,20 @@ static uint8_t att_mtu_req(FAR struct bt_conn_s *conn,
 
   mtu = BT_LE162HOST(req->mtu);
 
-  wlinfo("Client MTU %u\n", mtu);
+  printf("BLE ATT mtu req: client=%u\n", mtu);
 
-  if (mtu > BT_ATT_MAX_LE_MTU || mtu < BT_ATT_DEFAULT_LE_MTU)
+  if (mtu < BT_ATT_DEFAULT_LE_MTU)
     {
-      return BT_ATT_ERR_INVALID_PDU;
+      printf("BLE ATT mtu clamp: client=%u min=%u\n", mtu,
+             BT_ATT_DEFAULT_LE_MTU);
+      mtu = BT_ATT_DEFAULT_LE_MTU;
+    }
+
+  if (mtu > BT_ATT_MAX_LE_MTU)
+    {
+      printf("BLE ATT mtu clamp: client=%u max=%u\n", mtu,
+             BT_ATT_MAX_LE_MTU);
+      mtu = BT_ATT_MAX_LE_MTU;
     }
 
   buf = bt_att_create_pdu(conn, BT_ATT_OP_MTU_RSP, sizeof(*rsp));
@@ -510,6 +523,8 @@ static uint8_t att_mtu_req(FAR struct bt_conn_s *conn,
 
   rsp = bt_buf_extend(buf, sizeof(*rsp));
   rsp->mtu = BT_HOST2LE16(mtu);
+
+  printf("BLE ATT mtu rsp: server=%u\n", mtu);
 
   bt_l2cap_send(conn, BT_L2CAP_CID_ATT, buf);
 
@@ -965,12 +980,20 @@ static uint8_t att_read_type_rsp(FAR struct bt_conn_s *conn,
     {
       bt_buf_release(data.buf);
 
+      printf("BLE ATT read type empty: uuid=0x%04x range=0x%04x-0x%04x\n",
+             uuid->type == BT_UUID_16 ? uuid->u.u16 : 0,
+             start_handle, end_handle);
+
       /* Response here since handle is set */
 
       send_err_rsp(conn, BT_ATT_OP_READ_TYPE_REQ, start_handle,
                    BT_ATT_ERR_ATTRIBUTE_NOT_FOUND);
       return 0;
     }
+
+  printf("BLE ATT read type rsp: uuid=0x%04x range=0x%04x-0x%04x len=%u\n",
+         uuid->type == BT_UUID_16 ? uuid->u.u16 : 0,
+         start_handle, end_handle, data.rsp->len);
 
   bt_l2cap_send(conn, BT_L2CAP_CID_ATT, data.buf);
   return 0;
@@ -1003,8 +1026,9 @@ static uint8_t att_read_type_req(FAR struct bt_conn_s *conn,
       return BT_ATT_ERR_UNLIKELY;
     }
 
-  wlinfo("start_handle 0x%04x end_handle 0x%04x type %u\n",
-         start_handle, end_handle, uuid.u.u16);
+  printf("BLE ATT read type req: uuid=0x%04x range=0x%04x-0x%04x\n",
+         uuid.type == BT_UUID_16 ? uuid.u.u16 : 0,
+         start_handle, end_handle);
 
   if (!range_is_valid(start_handle, end_handle, &err_handle))
     {
@@ -1232,7 +1256,7 @@ static uint8_t read_group_cb(FAR const struct bt_gatt_attr_s *attr,
   FAR struct bt_att_s *att = data->conn->att;
   int read;
 
-  /* If UUID don't match update group end_handle */
+  /* If UUID does not match, it is part of the current group. */
 
   if (bt_uuid_cmp(attr->uuid, data->uuid))
     {
@@ -1243,6 +1267,18 @@ static uint8_t read_group_cb(FAR const struct bt_gatt_attr_s *attr,
 
       return BT_GATT_ITER_CONTINUE;
     }
+
+  if (data->group)
+    {
+      data->group->end_handle = BT_HOST2LE16(attr->handle - 1);
+      printf("BLE ATT read group finalize: start=0x%04x end=0x%04x\n",
+             BT_LE162HOST(data->group->start_handle),
+             BT_LE162HOST(data->group->end_handle));
+    }
+
+  printf("BLE ATT read group match: handle=0x%04x uuid=0x%04x\n",
+         attr->handle, attr->uuid->type == BT_UUID_16 ?
+         attr->uuid->u.u16 : 0);
 
   wlinfo("handle 0x%04x\n", attr->handle);
 
@@ -1321,12 +1357,20 @@ static uint8_t att_read_group_rsp(FAR struct bt_conn_s *conn,
     {
       bt_buf_release(data.buf);
 
+      printf("BLE ATT read group empty: uuid=0x%04x range=0x%04x-0x%04x\n",
+             uuid->type == BT_UUID_16 ? uuid->u.u16 : 0,
+             start_handle, end_handle);
+
       /* Respond here since handle is set */
 
       send_err_rsp(conn, BT_ATT_OP_READ_GROUP_REQ, start_handle,
                    BT_ATT_ERR_ATTRIBUTE_NOT_FOUND);
       return 0;
     }
+
+  printf("BLE ATT read group rsp: uuid=0x%04x range=0x%04x-0x%04x len=%u\n",
+         uuid->type == BT_UUID_16 ? uuid->u.u16 : 0,
+         start_handle, end_handle, data.rsp->len);
 
   bt_l2cap_send(conn, BT_L2CAP_CID_ATT, data.buf);
   return 0;
@@ -1359,8 +1403,9 @@ static uint8_t att_read_group_req(FAR struct bt_conn_s *conn,
       return BT_ATT_ERR_UNLIKELY;
     }
 
-  wlinfo("start_handle 0x%04x end_handle 0x%04x type %u\n",
-         start_handle, end_handle, uuid.u.u16);
+  printf("BLE ATT read group req: uuid=0x%04x range=0x%04x-0x%04x\n",
+         uuid.type == BT_UUID_16 ? uuid.u.u16 : 0,
+         start_handle, end_handle);
 
   if (!range_is_valid(start_handle, end_handle, &err_handle))
     {
@@ -1755,7 +1800,7 @@ static void bt_att_receive(FAR struct bt_conn_s *conn,
       goto done;
     }
 
-  wlinfo("Received ATT code 0x%02x len %u\n", hdr->code, buf->len);
+  printf("BLE ATT rx: code=0x%02x len=%u\n", hdr->code, buf->len);
 
   bt_buf_consume(buf, sizeof(*hdr));
 
