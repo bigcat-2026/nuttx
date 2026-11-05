@@ -23,6 +23,10 @@
 #ifndef __INCLUDE_NUTTX_SENSORS_QMI8658_H
 #define __INCLUDE_NUTTX_SENSORS_QMI8658_H
 
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <nuttx/config.h>
 #include <nuttx/compiler.h>
 

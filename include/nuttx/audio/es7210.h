@@ -23,11 +23,14 @@
 #ifndef __INCLUDE_NUTTX_AUDIO_ES7210_H
 #define __INCLUDE_NUTTX_AUDIO_ES7210_H
 
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <nuttx/config.h>
+#include <stdint.h>
 
 #ifdef CONFIG_AUDIO_ES7210
-
-#include <stdint.h>
 
 #ifndef CONFIG_AUDIO
 #  error CONFIG_AUDIO is required for audio subsystem support
