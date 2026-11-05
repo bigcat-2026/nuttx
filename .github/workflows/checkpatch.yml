@@ -7,8 +7,134 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
 
+  # reusable
+  workflow_call:
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   checkpatch:
-    uses: open-vela/public-actions/.github/workflows/checkpatch.yml@dev
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Get Repo Name
+      run: |
+          echo "REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+      id: checkout
+      with:
+          repository: ${{ github.repository }}
+          path: ${{ env.REPO_NAME }} 
+          fetch-depth: 0
+      
+    - name: Checkout Nuttx Repo
+      if: ${{ env.REPO_NAME == 'nuttx-apps' }}
+      uses: actions/checkout@v4
+      with:
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          repository: ${{ github.repository_owner }}/nuttx
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: nuttx
+          fetch-depth: 0
+
+    - name: Check Watermark in Images
+      run: |
+          cd ${{ env.REPO_NAME }}
+          commits="${{ github.event.pull_request.base.sha }}..HEAD"
+          
+          # Get modified image files in PR (case-insensitive)
+          image_count=$(git diff -z --name-only --diff-filter=ACM $commits | tr '\0' '\n' | grep -icE '\.(png|jpg|jpeg|bmp|gif)$' || echo 0)
+          
+          if [ "$image_count" -gt 0 ]; then
+            echo "Found $image_count image file(s) in PR, starting watermark detection..."
+            
+            # Create temporary file to store image list
+            git diff -z --name-only --diff-filter=ACM $commits | tr '\0' '\n' | grep -iE '\.(png|jpg|jpeg|bmp|gif)$' > /tmp/image_list.txt
+            
+            # Detect watermark in each image using Docker
+            has_error=0
+            while IFS= read -r img; do
+              if [ -n "$img" ] && [ -f "$img" ]; then
+                echo "Checking image: $img"
+                # Run watermark detection in Docker container
+                if ! docker run --rm -v "$(pwd):/workspace" ghcr.io/open-vela/watermark-detector:dev "$img"; then
+                  has_error=1
+                fi
+              elif [ -n "$img" ]; then
+                echo "Warning: File not found: $img"
+              fi
+            done < /tmp/image_list.txt
+            
+            rm -f /tmp/image_list.txt
+            
+            if [ $has_error -eq 1 ]; then
+              echo "❌ Watermark detection failed: Sensitive watermark detected"
+              exit 1
+            fi
+            
+            echo "✅ Watermark detection passed"
+          else
+            echo "No image file changes detected, skipping watermark check"
+          fi
+
+    - name: Check Chinese in Commit Messages
+      run: |
+          cd ${{ env.REPO_NAME }}
+          commits="${{ github.event.pull_request.base.sha }}..HEAD"
+          
+          echo "Checking commit messages for Chinese characters..."
+          # Run Chinese detection in commit messages using Docker
+          if ! docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/open-vela/chinese-detector:dev bash -c "git config --global --add safe.directory /workspace && python /usr/local/bin/check_commit_msg.py '$commits'"; then
+            echo "❌ Chinese character check failed in commit messages"
+            exit 1
+          fi
+          
+          echo "✅ Commit message check passed"
+
+    - name: Check Chinese in Source Files
+      # Some repos legitimately need Chinese in source files, so the
+      # source-file Chinese check is skipped for them. The commit
+      # message check above still runs for every repo.
+      #   - packages_apps: Quick App (快应用) UI strings and keywords
+      #   - packages_ai_agent: AI agent content in Chinese is unavoidable
+      if: ${{ env.REPO_NAME != 'packages_apps' && env.REPO_NAME != 'packages_ai_agent' }}
+      run: |
+          cd ${{ env.REPO_NAME }}
+          commits="${{ github.event.pull_request.base.sha }}..HEAD"
+          
+          echo "Checking source files for Chinese characters..."
+          # Run Chinese detection in source files using Docker
+          # Exclude README.md, .md files, and docs/ directory by default
+          if ! docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/open-vela/chinese-detector:dev bash -c "git config --global --add safe.directory /workspace && python /usr/local/bin/check_source_files.py '$commits' --exclude README.md .md docs/"; then
+            echo "❌ Chinese character check failed in source files"
+            exit 1
+          fi
+          
+          echo "✅ Source file check passed"
+
+    - name: Check PR
+      run: |
+          cd ${{ env.REPO_NAME }}
+          commits="${{ github.event.pull_request.base.sha }}..HEAD"
+          git log --oneline $commits
+          if [ ${{ env.REPO_NAME }} == "nuttx-apps" ] || [ ${{ env.REPO_NAME }} == "nuttx" ]; then
+            echo "::add-matcher::nuttx/.github/nxstyle.json"
+            python -m venv .venv
+            source .venv/bin/activate
+            pip install cmake-format black flake8 isort
+            echo "../nuttx/tools/checkpatch.sh -u -m -g $commits"
+            bash ../nuttx/tools/checkpatch.sh -u -m -g $commits
+          else
+            msg=`git show -s --format=%B $commits`
+            while read; do
+              if [[ $REPLY =~ ^Change-Id ]]; then
+                echo "Remove Gerrit Change-ID's before submitting upstream"
+                exit 1
+              fi
+            done <<< "$msg"
+          fi
+
