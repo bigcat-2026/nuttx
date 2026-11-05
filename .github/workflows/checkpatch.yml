@@ -99,7 +99,7 @@ jobs:
       # Some repos legitimately need Chinese in source files, so the
       # source-file Chinese check is skipped for them. The commit
       # message check above still runs for every repo.
-      #   - packages_apps: Quick App (快应用) UI strings and keywords
+      #   - packages_apps: Quick App UI strings and keywords
       #   - packages_ai_agent: AI agent content in Chinese is unavoidable
       if: ${{ env.REPO_NAME != 'packages_apps' && env.REPO_NAME != 'packages_ai_agent' }}
       run: |
