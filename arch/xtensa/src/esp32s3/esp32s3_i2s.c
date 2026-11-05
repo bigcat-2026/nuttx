@@ -1106,8 +1106,9 @@ static int i2s_rxdma_setup(struct esp32s3_i2s_s *priv,
   sq_addlast((sq_entry_t *)bfcontainer, &priv->rx.pend);
 
   /* Trigger DMA transfer if the RX channel is already running.  Audio users
-   * usually enqueue buffers before AUDIOIOC_START; starting DMA before the RX
-   * channel is initialized would be cancelled by the later RX reset.
+   * usually enqueue buffers before AUDIOIOC_START; starting DMA before
+   * the RX channel is initialized would be cancelled by the later RX
+   * reset.
    */
 
   if (priv->rx_started)
@@ -1199,6 +1200,7 @@ static void IRAM_ATTR i2s_tx_schedule(struct esp32s3_i2s_s *priv,
               i2s_txdma_start(priv);
             }
         }
+
       /* If the worker has completed running, then reschedule the working
        * thread.
        */
@@ -1263,7 +1265,9 @@ static void i2s_rx_schedule(struct esp32s3_i2s_s *priv,
 
       bfcontainer->result = OK;
 
-      /* Add the completed buffer container to the tail of the rx.done queue */
+      /* Add the completed buffer container to the tail of the rx.done
+       * queue.
+       */
 
       sq_addlast((sq_entry_t *)bfcontainer, &priv->rx.done);
 
@@ -1466,8 +1470,8 @@ static void i2s_rx_worker(void *arg)
  *
  * Description:
  *   Cancel all queued RX buffers and return them to the upper half.  This is
- *   used by STOP so audio clients do not block forever if the RX DMA does not
- *   generate a completion interrupt.
+ *   used by STOP so audio clients do not block forever if the RX DMA does
+ *   not generate a completion interrupt.
  *
  ****************************************************************************/
 

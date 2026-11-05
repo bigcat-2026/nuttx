@@ -84,6 +84,7 @@ void up_initial_state(struct tcb_s *tcb)
         {
           goto init_regs;
         }
+
 #endif
       return;
     }

@@ -1544,8 +1544,8 @@ static void ble_internal_heap_init(void)
   if (g_ble_internal_heap == NULL)
     {
       g_ble_internal_heap = mm_initialize("esp32s3-ble-internal",
-                                          g_ble_internal_heap_memory,
-                                          sizeof(g_ble_internal_heap_memory));
+                                        g_ble_internal_heap_memory,
+                                        sizeof(g_ble_internal_heap_memory));
       syslog(LOG_INFO, "BLE internal heap init heap=%p start=%p size=%u\n",
              g_ble_internal_heap, g_ble_internal_heap_memory,
              (unsigned int)sizeof(g_ble_internal_heap_memory));
@@ -3162,6 +3162,7 @@ int esp32s3_bt_controller_init(void)
       wlerr("Error, probably invalid OSI Functions\n");
       return -EINVAL;
     }
+
   bt_init_trace("osi funcs register done");
 
   wlinfo("BT controller compile version [%s]\n",
@@ -3173,6 +3174,7 @@ int esp32s3_bt_controller_init(void)
       wlerr("Low power module initialization failed\n");
       goto error;
     }
+
   bt_init_trace("low power init done");
 
 #ifdef CONFIG_ESP32S3_WIFI_BT_COEXIST
@@ -3196,6 +3198,7 @@ int esp32s3_bt_controller_init(void)
       err = -ENOMEM;
       goto error;
     }
+
   bt_init_trace("btdm controller init done");
 
   g_btdm_controller_status = ESP_BT_CONTROLLER_STATUS_INITED;
@@ -3208,6 +3211,7 @@ int esp32s3_bt_controller_init(void)
     {
       return -EIO;
     }
+
   bt_init_trace("wireless init done");
 #endif
 
@@ -3339,6 +3343,7 @@ int esp32s3_bt_controller_enable(esp_bt_mode_t mode)
       ret = ERROR;
       goto error;
     }
+
   printf("BT enable debug: after btdm_controller_enable\n");
   fflush(stdout);
 

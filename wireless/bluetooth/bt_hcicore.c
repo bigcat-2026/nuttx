@@ -662,7 +662,8 @@ static void hci_disconn_complete(FAR struct bt_buf_s *buf)
   if (!conn)
     {
       wlerr("ERROR:  Unable to look up conn with handle %u\n", handle);
-      printf("BLE HCI disconnect: missing host conn handle=%u reason=%u adv=%u\n",
+      printf("BLE HCI disconnect: missing host conn handle=%u"
+             " reason=%u adv=%u\n",
              handle, evt->reason, g_btdev.adv_enable);
       fflush(stdout);
       return;

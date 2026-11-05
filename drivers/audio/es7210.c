@@ -1,3 +1,29 @@
+/****************************************************************************
+ * drivers/audio/es7210.c
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.  The
+ * ASF licenses this file to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ ****************************************************************************/
+
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <nuttx/config.h>
 
 #include <sys/param.h>
@@ -16,6 +42,24 @@
 
 #ifdef CONFIG_AUDIO_ES7210
 
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+#define ES7210_MIC_GAIN         0x1d
+#define ES7210_MIC_OFF_GAIN     0x00
+#define ES7210_ADC_GAIN         0x0a
+#define ES7210_ADC_OFF_GAIN     0x08
+#define ES7210_ADC12_UNMUTE     0x00
+#define ES7210_ADC34_MUTE       0x03
+#define ES7210_MODE_SLAVE_2CH   0x10
+#define ES7210_MIC12_POWER_ON   0x00
+#define ES7210_MIC34_POWER_DOWN 0xff
+
+/****************************************************************************
+ * Private Types
+ ****************************************************************************/
+
 struct es7210_regval_s
 {
   uint8_t reg;
@@ -29,15 +73,9 @@ struct es7210_dev_s
   uint8_t address;
 };
 
-#define ES7210_MIC_GAIN         0x1d
-#define ES7210_MIC_OFF_GAIN     0x00
-#define ES7210_ADC_GAIN         0x0a
-#define ES7210_ADC_OFF_GAIN     0x08
-#define ES7210_ADC12_UNMUTE     0x00
-#define ES7210_ADC34_MUTE       0x03
-#define ES7210_MODE_SLAVE_2CH   0x10
-#define ES7210_MIC12_POWER_ON   0x00
-#define ES7210_MIC34_POWER_DOWN 0xff
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
 
 static int es7210_writereg(FAR struct es7210_dev_s *priv, uint8_t reg,
                            uint8_t val)
@@ -142,6 +180,10 @@ static int es7210_configure(FAR struct es7210_dev_s *priv)
          priv->address);
   return OK;
 }
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
 
 FAR struct audio_lowerhalf_s *
   es7210_initialize(FAR struct i2c_master_s *i2c,

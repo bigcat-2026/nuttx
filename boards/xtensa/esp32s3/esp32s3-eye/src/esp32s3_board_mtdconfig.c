@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ****************************************************************************/
 
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <nuttx/config.h>
 
 #include <errno.h>
@@ -15,11 +19,23 @@
 
 #include "esp32s3-eye.h"
 
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
 #ifndef CONFIG_TESTING_MTD_CONFIG_MOUNTPT_NAME
 #  define CONFIG_TESTING_MTD_CONFIG_MOUNTPT_NAME "/dev/mtdnvs_flash"
 #endif
 
+/****************************************************************************
+ * Private Data
+ ****************************************************************************/
+
 static uint8_t *g_mtdconfig_test_ram;
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
 
 int board_mtdconfig_test_initialize(void)
 {
@@ -49,7 +65,8 @@ int board_mtdconfig_test_initialize(void)
                            NULL);
   if (ret < 0)
     {
-      syslog(LOG_ERR, "ERROR: Failed to register MTD test device: %d\n", ret);
+      syslog(LOG_ERR, "ERROR: Failed to register MTD test device: %d\n",
+             ret);
       return ret;
     }
 

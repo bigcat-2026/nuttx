@@ -1057,6 +1057,7 @@ int esp32s3_usbserial_raw_probe(int seconds, uint32_t *last_ep1conf,
     {
       loops = 20;
     }
+
   esp32s3_usbserial_force_pad("raw-probe");
   modifyreg32(USB_SERIAL_JTAG_INT_ENA_REG, 0,
               USB_SERIAL_JTAG_SERIAL_OUT_RECV_PKT_INT_ENA);

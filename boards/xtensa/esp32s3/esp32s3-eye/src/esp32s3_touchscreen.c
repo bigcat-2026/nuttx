@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ****************************************************************************/
 
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <nuttx/config.h>
 
 #include <errno.h>
@@ -22,9 +26,17 @@
 #define BOARD_TOUCHSCREEN_I2C_ADDR      0x38
 #define BOARD_TOUCHSCREEN_I2C_CLOCK     400000
 
+/****************************************************************************
+ * Private Function Prototypes
+ ****************************************************************************/
+
 static void esp32s3_ft5x06_wakeup(const struct ft5x06_config_s *config);
 static void esp32s3_ft5x06_nreset(const struct ft5x06_config_s *config,
                                   bool state);
+
+/****************************************************************************
+ * Private Data
+ ****************************************************************************/
 
 static const struct ft5x06_config_s g_ft5x06_config =
 {
@@ -35,6 +47,10 @@ static const struct ft5x06_config_s g_ft5x06_config =
 };
 
 static bool g_touch_initialized;
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
 
 static void esp32s3_ft5x06_wakeup(const struct ft5x06_config_s *config)
 {

@@ -1,3 +1,29 @@
+/****************************************************************************
+ * drivers/sensors/qmi8658.c
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.  The
+ * ASF licenses this file to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ ****************************************************************************/
+
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <nuttx/config.h>
 
 #include <errno.h>
@@ -18,6 +44,10 @@
 #endif
 
 #if defined(CONFIG_SENSORS_QMI8658)
+
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
 
 #define QMI8658_WHO_AM_I        0x00
 #define QMI8658_CTRL1           0x02
@@ -40,6 +70,10 @@
 #ifndef CONFIG_QMI8658_I2C_FREQUENCY
 #  define CONFIG_QMI8658_I2C_FREQUENCY 400000
 #endif
+
+/****************************************************************************
+ * Private Types
+ ****************************************************************************/
 
 struct qmi8658_axis_s
 {
@@ -73,6 +107,10 @@ struct qmi8658_sensor_s
 };
 #endif
 
+/****************************************************************************
+ * Private Function Prototypes
+ ****************************************************************************/
+
 static int qmi8658_open(FAR struct file *filep);
 static int qmi8658_close(FAR struct file *filep);
 static ssize_t qmi8658_read(FAR struct file *filep, FAR char *buffer,
@@ -86,6 +124,10 @@ static int qmi8658_sensor_set_interval(FAR struct sensor_lowerhalf_s *lower,
                                        FAR uint32_t *period_us);
 static void qmi8658_sensor_worker(FAR void *arg);
 #endif
+
+/****************************************************************************
+ * Private Data
+ ****************************************************************************/
 
 static const struct file_operations g_qmi8658_fops =
 {
@@ -104,6 +146,10 @@ static const struct sensor_ops_s g_qmi8658_sensor_ops =
   .set_interval = qmi8658_sensor_set_interval,
 };
 #endif
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
 
 static int qmi8658_getregs(FAR struct qmi8658_dev_s *priv,
                            uint8_t regaddr, FAR uint8_t *buffer,
@@ -380,6 +426,10 @@ static ssize_t qmi8658_read(FAR struct file *filep, FAR char *buffer,
 
   return sizeof(struct qmi8658_sample_s);
 }
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
 
 int qmi8658_register(FAR const char *devpath, FAR struct i2c_master_s *i2c)
 {
