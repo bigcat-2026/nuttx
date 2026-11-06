@@ -40,7 +40,7 @@ CSRCS += esp32s3_board_spi.c
 endif
 
 ifeq ($(CONFIG_ESP32S3_BOX_LCD),y)
-    ifeq ($(CONFIG_ESP32_S3_BOX),y)
+    ifneq ($(filter y,$(CONFIG_ESP32_S3_BOX) $(CONFIG_ESP32S3_MIST_NANO_S1)),)
         CSRCS += esp32s3_board_lcd_st7789.c
     else
         CSRCS += esp32s3_board_lcd_ili9342c.c

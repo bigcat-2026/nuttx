@@ -46,20 +46,37 @@
 
 #define DISPLAY_SPI         2
 
-/* CS:   5
- * CLK:  7
- * MOSI: 6
- * MISO: N/A
+/* ESP32-S3-BOX:
+ *   CS:   5
+ *   CLK:  7
+ *   MOSI: 6
+ *   MISO: N/A
+ * MIST-NANO-S1:
+ *   CS:   12
+ *   CLK:  11
+ *   MOSI: 5
+ *   MISO: 4
  */
 
-#define DISPLAY_DC          4
+#ifdef CONFIG_ESP32S3_MIST_NANO_S1
+#  define DISPLAY_DC        6
+#else
+#  define DISPLAY_DC        4
+#endif
+
 #ifdef CONFIG_ESP32_S3_BOX
 #  define DISPLAY_BCKL      45
+#elif defined(CONFIG_ESP32S3_MIST_NANO_S1)
+#  define DISPLAY_BCKL      7
 #else
 #  define DISPLAY_BCKL      47
 #endif
 
-#define DISPLAY_RST         48
+#ifdef CONFIG_ESP32S3_MIST_NANO_S1
+#  define DISPLAY_RST       8
+#else
+#  define DISPLAY_RST       48
+#endif
 
 /* Touchpad */
 

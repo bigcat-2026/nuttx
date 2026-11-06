@@ -42,6 +42,11 @@
 
 #include "esp32s3_ble_adapter.h"
 
+#ifdef CONFIG_ESP32S3_USBSERIAL
+void esp32s3_usbserial_debug_save(void);
+void esp32s3_usbserial_debug_restore(void);
+#endif
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -195,6 +200,7 @@ static int esp32s3_ble_send(struct bt_driver_s *drv,
                             void *data, size_t len)
 {
   uint8_t *hdr = (uint8_t *)data - drv->head_reserve;
+  int retry;
 
   if ((len + H4_HEADER_SIZE) > BLE_BUF_SIZE)
     {
@@ -218,12 +224,20 @@ static int esp32s3_ble_send(struct bt_driver_s *drv,
       return -EINVAL;
     }
 
-  if (esp32s3_vhci_host_check_send_available())
+  for (retry = 0; retry < 1000; retry++)
     {
-      esp32s3_vhci_host_send_packet(hdr, len + drv->head_reserve);
+      if (esp32s3_vhci_host_check_send_available())
+        {
+          esp32s3_vhci_host_send_packet(hdr, len + H4_HEADER_SIZE);
+          return len;
+        }
+
+      usleep(1000);
     }
 
-  return len;
+  wlerr("VHCI send unavailable type=%u len=%u\n",
+        hdr[0], (unsigned int)(len + H4_HEADER_SIZE));
+  return -EBUSY;
 }
 
 /****************************************************************************
@@ -285,28 +299,60 @@ int esp32s3_ble_initialize(void)
 {
   int ret;
 
+#ifdef CONFIG_ESP32S3_USBSERIAL
+  esp32s3_usbserial_debug_save();
+#endif
+
+  printf("BLE stage: controller init begin\n");
+  fflush(stdout);
   ret = esp32s3_bt_controller_init();
+  printf("BLE stage: controller init ret=%d\n", ret);
+  fflush(stdout);
   if (ret)
     {
       wlerr("Failed to initialize BLE ret=%d\n", ret);
       return ERROR;
     }
 
+#ifdef CONFIG_ESP32S3_USBSERIAL
+  esp32s3_usbserial_debug_restore();
+  printf("BLE stage: usb restored after controller init\n");
+  fflush(stdout);
+#endif
+
+  printf("BLE stage: controller enable begin\n");
+  fflush(stdout);
   ret = esp32s3_bt_controller_enable(ESP_BT_MODE_BLE);
+  printf("BLE stage: controller enable ret=%d\n", ret);
+  fflush(stdout);
   if (ret)
     {
       wlerr("Failed to Enable BLE ret=%d\n", ret);
       return ERROR;
     }
 
+#ifdef CONFIG_ESP32S3_USBSERIAL
+  esp32s3_usbserial_debug_restore();
+  printf("BLE stage: usb restored after controller enable\n");
+  fflush(stdout);
+#endif
+
+  printf("BLE stage: vhci register begin\n");
+  fflush(stdout);
   ret = esp32s3_vhci_register_callback(&vhci_host_cb);
+  printf("BLE stage: vhci register ret=%d\n", ret);
+  fflush(stdout);
   if (ret)
     {
       wlerr("Failed to register BLE callback ret=%d\n", ret);
       return ERROR;
     }
 
+  printf("BLE stage: host register begin\n");
+  fflush(stdout);
   ret = bt_driver_register(&g_ble_priv.drv);
+  printf("BLE stage: host register ret=%d\n", ret);
+  fflush(stdout);
   if (ret < 0)
     {
       wlerr("bt_driver_register error: %d\n", ret);

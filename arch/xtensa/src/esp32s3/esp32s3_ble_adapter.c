@@ -36,8 +36,10 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <syslog.h>
 
 #include <nuttx/kmalloc.h>
+#include <nuttx/mm/mm.h>
 #include <nuttx/mqueue.h>
 #include <nuttx/spinlock.h>
 #include <nuttx/irq.h>
@@ -76,6 +78,16 @@
 #include "private/esp_coexist_internal.h"
 
 #include "esp32s3_ble_adapter.h"
+
+#ifndef CONFIG_ESP32S3_BLE_TASK_RUN_CPU
+#  define CONFIG_ESP32S3_BLE_TASK_RUN_CPU 0
+#endif
+
+static void bt_init_trace(const char *stage)
+{
+  printf("BT init trace: %s\n", stage);
+  fflush(stdout);
+}
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -368,6 +380,8 @@ static void task_delete_wrapper(void *task_handle);
 static bool IRAM_ATTR is_in_isr_wrapper(void);
 static void *malloc_wrapper(size_t size);
 static void *malloc_internal_wrapper(size_t size);
+static void free_wrapper(void *ptr);
+static void ble_internal_heap_init(void);
 static int IRAM_ATTR read_mac_wrapper(uint8_t mac[6]);
 static void IRAM_ATTR srand_wrapper(unsigned int seed);
 static int IRAM_ATTR rand_wrapper(void);
@@ -543,7 +557,7 @@ static struct osi_funcs_s g_osi_funcs =
   ._cause_sw_intr_to_core = NULL,
   ._malloc = malloc_wrapper,
   ._malloc_internal = malloc_internal_wrapper,
-  ._free = free,
+  ._free = free_wrapper,
   ._read_efuse_mac = read_mac_wrapper,
   ._srand = srand_wrapper,
   ._rand = rand_wrapper,
@@ -576,6 +590,14 @@ static struct osi_funcs_s g_osi_funcs =
 };
 
 static DRAM_ATTR struct osi_funcs_s *g_osi_funcs_p;
+
+#define ESP32S3_BLE_INTERNAL_HEAP_SIZE (56 * 1024)
+
+static DRAM_ATTR uint8_t
+  g_ble_internal_heap_memory[ESP32S3_BLE_INTERNAL_HEAP_SIZE]
+  __attribute__((aligned(8)));
+
+static struct mm_heap_s *g_ble_internal_heap;
 
 /* Controller status */
 
@@ -1517,6 +1539,19 @@ static void *malloc_wrapper(size_t size)
   return p;
 }
 
+static void ble_internal_heap_init(void)
+{
+  if (g_ble_internal_heap == NULL)
+    {
+      g_ble_internal_heap = mm_initialize("esp32s3-ble-internal",
+                                        g_ble_internal_heap_memory,
+                                        sizeof(g_ble_internal_heap_memory));
+      syslog(LOG_INFO, "BLE internal heap init heap=%p start=%p size=%u\n",
+             g_ble_internal_heap, g_ble_internal_heap_memory,
+             (unsigned int)sizeof(g_ble_internal_heap_memory));
+    }
+}
+
 /****************************************************************************
  * Name: malloc_internal_wrapper
  *
@@ -1533,18 +1568,30 @@ static void *malloc_wrapper(size_t size)
 
 static void *malloc_internal_wrapper(size_t size)
 {
-  void * p = kmm_malloc(size);
+  void *p;
 
-  if (p != NULL)
+  ble_internal_heap_init();
+  p = mm_malloc(g_ble_internal_heap, size);
+  if (p == NULL)
     {
-      if (esp32s3_ptr_extram(p))
-        {
-          kmm_free(p);
-          return NULL;
-        }
+      syslog(LOG_ERR, "BLE internal heap alloc failed size=%u\n",
+             (unsigned int)size);
     }
 
   return p;
+}
+
+static void free_wrapper(void *ptr)
+{
+  if (ptr != NULL && g_ble_internal_heap != NULL &&
+      mm_heapmember(g_ble_internal_heap, ptr))
+    {
+      mm_free(g_ble_internal_heap, ptr);
+    }
+  else
+    {
+      free(ptr);
+    }
 }
 
 /****************************************************************************
@@ -2174,12 +2221,7 @@ static int32_t esp_task_create_pinned_to_core(void *entry,
   DEBUGASSERT(task_handle != NULL);
 
 #ifdef CONFIG_SMP
-  ret = sched_lock();
-  if (ret)
-    {
-      wlerr("Failed to lock scheduler before creating pinned thread\n");
-      return false;
-    }
+  sched_lock();
 #endif
 
   pid = kthread_create(name, prio, stack_depth, entry,
@@ -2200,6 +2242,7 @@ static int32_t esp_task_create_pinned_to_core(void *entry,
           if (ret)
             {
               wlerr("Failed to set affinity error=%d\n", ret);
+              sched_unlock();
               return false;
             }
         }
@@ -2211,12 +2254,7 @@ static int32_t esp_task_create_pinned_to_core(void *entry,
     }
 
 #ifdef CONFIG_SMP
-  ret = sched_unlock();
-  if (ret)
-    {
-      wlerr("Failed to unlock scheduler after creating pinned thread\n");
-      return false;
-    }
+  sched_unlock();
 #endif
 
   return pid > 0;
@@ -3019,6 +3057,8 @@ int esp32s3_bt_controller_init(void)
   int i;
   int err;
 
+  cfg->ble_max_act = 10;
+
   sq_init(&g_ble_int_flags_free);
   sq_init(&g_ble_int_flags_used);
 
@@ -3079,18 +3119,35 @@ int esp32s3_bt_controller_init(void)
 
   cfg->controller_task_stack_size = CONFIG_ESP32S3_BLE_TASK_STACK_SIZE;
   cfg->controller_task_prio       = CONFIG_ESP32S3_BLE_TASK_PRIORITY;
-  cfg->controller_task_run_cpu    = CONFIG_BT_CTRL_PINNED_TO_CORE;
+  cfg->controller_task_run_cpu    = CONFIG_ESP32S3_BLE_TASK_RUN_CPU;
+  cfg->sleep_mode                 = ESP_BT_SLEEP_MODE_NONE;
+  cfg->sleep_clock                = ESP_BT_SLEEP_CLOCK_NONE;
   cfg->magic                      = ESP_BT_CTRL_CONFIG_MAGIC_VAL;
 
+  printf("BT init trace: config prepared cpu=%d prio=%d stack=%d\n",
+         cfg->controller_task_run_cpu, cfg->controller_task_prio,
+         cfg->controller_task_stack_size);
+  fflush(stdout);
+
 #if CONFIG_MAC_BB_PD
+  bt_init_trace("mac bb pd mem init begin");
   esp_mac_bb_pd_mem_init();
+  bt_init_trace("mac bb pd mem init done");
 #endif
 
+  bt_init_trace("phy modem init begin");
   esp_phy_modem_init();
+  bt_init_trace("phy modem init done");
 
+  bt_init_trace("bt power domain on begin");
   esp_bt_power_domain_on();
+  bt_init_trace("bt power domain on done");
 
+  ble_internal_heap_init();
+
+  bt_init_trace("btdm mem init begin");
   btdm_controller_mem_init();
+  bt_init_trace("btdm mem init done");
 
   g_osi_funcs_p = kmm_malloc(sizeof(struct osi_funcs_s));
   if (g_osi_funcs_p == NULL)
@@ -3099,42 +3156,66 @@ int esp32s3_bt_controller_init(void)
     }
 
   memcpy(g_osi_funcs_p, &g_osi_funcs, sizeof(struct osi_funcs_s));
+  bt_init_trace("osi funcs register begin");
   if (btdm_osi_funcs_register(g_osi_funcs_p) != 0)
     {
       wlerr("Error, probably invalid OSI Functions\n");
       return -EINVAL;
     }
 
+  bt_init_trace("osi funcs register done");
+
   wlinfo("BT controller compile version [%s]\n",
          btdm_controller_get_compile_version());
 
+  bt_init_trace("low power init begin");
   if ((err = btdm_low_power_mode_init(cfg)) != ESP_OK)
     {
       wlerr("Low power module initialization failed\n");
       goto error;
     }
 
+  bt_init_trace("low power init done");
+
 #ifdef CONFIG_ESP32S3_WIFI_BT_COEXIST
+  bt_init_trace("coex init begin");
   coex_init();
+  bt_init_trace("coex init done");
 #endif
 
+  bt_init_trace("bt module enable begin");
   periph_module_enable(PERIPH_BT_MODULE);
-  periph_module_reset(PERIPH_BT_MODULE);
+  bt_init_trace("bt module enable done");
 
+  bt_init_trace("bt module reset begin");
+  periph_module_reset(PERIPH_BT_MODULE);
+  bt_init_trace("bt module reset done");
+
+  bt_init_trace("btdm controller init begin");
   if (btdm_controller_init(cfg) != 0)
     {
+      syslog(LOG_ERR, "BLE controller init: btdm_controller_init failed\n");
       err = -ENOMEM;
       goto error;
     }
 
+  bt_init_trace("btdm controller init done");
+
   g_btdm_controller_status = ESP_BT_CONTROLLER_STATUS_INITED;
 
+  bt_init_trace("controller status inited");
+
 #ifdef CONFIG_ESP32S3_SPIFLASH
+  bt_init_trace("wireless init begin");
   if (esp_wireless_init() != OK)
     {
       return -EIO;
     }
+
+  bt_init_trace("wireless init done");
 #endif
+
+  bt_init_trace("leave ok");
 
   return OK;
 
@@ -3255,11 +3336,16 @@ int esp32s3_bt_controller_enable(esp_bt_mode_t mode)
 
   sdk_config_extend_set_pll_track(false);
 
+  printf("BT enable debug: before btdm_controller_enable\n");
+  fflush(stdout);
   if (btdm_controller_enable(mode) != 0)
     {
       ret = ERROR;
       goto error;
     }
+
+  printf("BT enable debug: after btdm_controller_enable\n");
+  fflush(stdout);
 
   coex_pti_v2();
 
